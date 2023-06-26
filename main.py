@@ -1,8 +1,6 @@
 import os
 from dotenv import load_dotenv
 from requests_oauthlib import OAuth2Session
-import json
-import pandas as pd
 
 load_dotenv()
 
@@ -29,16 +27,4 @@ token = spotify.fetch_token(token_url, auth=auth,
                             authorization_response=redirect_response)
 print(token)
 
-# Fetch a protected resource, i.e. user profile
-#r = spotify.get('https://api.spotify.com/v1/me/player/recently-played')
-
-tracksToSearch = pd.read_csv('tracksToSearch.csv')
-
-x = ",".join(tracksToSearch['id'])
-
-r = spotify.get('https://api.spotify.com/v1/audio-features?ids=' + x)
-
-# Writing to sample.json
-with open("trackFeatures.json", "w") as outfile:
-    json.dump(r.json(),outfile)
 

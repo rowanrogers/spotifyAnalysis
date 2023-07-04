@@ -25,6 +25,3 @@ auth = HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
 # Fetch the access token
 token = spotify.fetch_token(token_url, auth=auth,
                             authorization_response=redirect_response)
-print(token)
-
-

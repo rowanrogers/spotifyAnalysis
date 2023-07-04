@@ -25,7 +25,7 @@ class SpotifyClient:
         self.data_folder = Path("./data_raw") if data_folder is None else data_folder
 
     def __enter__(self):  # using this dunder method can be cleaner for doing some initial auth. __exit__ can then be used to "clean up" your auth, ie disconnect from a db
-        if self.token is not None:
+        if self.token is not None:  # I am actually not sure what the token is used for so maybe this logic isn't needed
             print("Token provided so no need to auth")
         else:
             print("Running auth flow to get API token")

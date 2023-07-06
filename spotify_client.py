@@ -1,11 +1,10 @@
 import os
+import pandas as pd
 from requests_oauthlib import OAuth2Session
 from requests.auth import HTTPBasicAuth
 from pathlib import Path
-import pandas as pd
-import json
-import re
-#from typing import List
+from datetime import datetime
+from helper import write_output
 
 class SpotifyClient:
     def __init__(self, data_folder: Path = None):
@@ -39,8 +38,9 @@ class SpotifyClient:
             authorization_response=redirect_response)
         if len(self.token) == 0 or self.token is None:
             raise Exception("Auth failed - after trying to get token it is still None or empty")
+        return(self)
 
-    def fetch_recently_played(self, output_file: str = "recently_played_test.json") -> pd.DataFrame:
+    def fetch_recently_played(self, output_file: str = None) -> pd.DataFrame:
         """
         Function to fetch recently played for a spotify user that has been
         validated with Oauth2. Returns a json with the track name, album,
@@ -48,12 +48,41 @@ class SpotifyClient:
         :param: output_file - file path to save the output too. Must be a json file
         :return: df of recently played tracks
         """
-        return(pd.DataFrame([1]))
+
+        r = self.oauth_session.get('https://api.spotify.com/v1/me/player/recently-played')
+
+        if output_file is not None:
+            write_output(json_object = r, output_file = output_file)
+
+        # Select items from json and turn into dataframe
+        raw_data = r.json()
+        df = pd.DataFrame(raw_data['items'])
+
+        # Normalize the track column to separate into multiple columns
+        normalized_df = pd.json_normalize(df['track'])
+
+        # Extract artists data (as there may be multiple artists per song), and merge with the track data
+        artists_data = pd.concat({i: pd.json_normalize(x) for i, x in normalized_df.pop('artists').items()}) \
+            .reset_index(level=1, drop=True)
+
+        updated_df = normalized_df.join(artists_data, rsuffix='_artist')
+
+        # Select useful columns
+        useful_cols = ['disc_number', 'duration_ms', 'id', 'name', 'popularity', 'track_number', 'type',
+                       'album.album_type',
+                       'album.name', 'album.release_date', 'album.release_date_precision', 'album.total_tracks',
+                       'album.type',
+                       'id_artist']
+
+        tidied_data = updated_df[useful_cols]
+
+        return tidied_data
+
 
     def fetch_track_features(
             self,
-            track_ids, # note I've used `from typing import List`. if using python >=3.9 you can just use the built in type directly e.g. list[str]
-            output_file: str = "track_features_test.json"
+            track_ids,  # note I've used `from typing import List`. if using python >=3.9 you can just use the built in type directly e.g. list[str]
+            output_file: str = None
     ) -> pd.DataFrame:
         """
         Function to fetch track features for a given set of IDs.
@@ -62,7 +91,17 @@ class SpotifyClient:
         fetch the features for. The output is written to a json file.
         :return: df of track features
         """
-        return(pd.DataFrame([1]))
+
+        x = ",".join(track_ids)
+        r = self.oauth_session.get('https://api.spotify.com/v1/audio-features?ids=' + x)
+
+        if output_file is not None:
+            write_output(json_object = r, output_file = output_file)
+
+        features = r.json()
+        features_df = pd.DataFrame(features['audio_features'])
+
+        return features_df
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         print("DONE")
@@ -71,63 +110,14 @@ class SpotifyClient:
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
+    today = datetime.today().strftime('%Y-%m-%d')
     with SpotifyClient() as sc:  # calling a class using the `with` terminology calls the `__enter__` dunder method of the class
-        print(sc.token())
+        print(sc.token)
         tracks = sc.fetch_recently_played()
-        track_ids = list(tracks['id'].unique())  # wrap in list() to match my type hint of List[str] because pandas returns as type np.ndarray. doesn't actually matter much, could just typehint that
+        track_ids = list(tracks['id'].unique())  # wrap in list() to match my type hint of List[str] because pandas returns as type np.ndarray.
+        # doesn't actually matter much, could just typehint that
         track_feats = sc.fetch_track_features(track_ids=track_ids)
 
-
-# recent played
-
-        # r = self.oauth_session.get('https://api.spotify.com/v1/me/player/recently-played')
-        #
-        # if not bool(re.search("\.json", output_file)):
-        #     output_file += ".json"
-        #
-        # # Writing to sample.json
-        # with open(output_file, "w") as outfile:
-        #     json.dump(r.json(), outfile)
-        #
-        # print("Raw output written successfully")
-        #
-        # # Select items from json and turn into dataframe
-        # raw_data = r.json()
-        # df = pd.DataFrame(raw_data['items'])
-        #
-        # # Normalize the track column to separate into multiple columns
-        # normalized_df = pd.json_normalize(df['track'])
-        #
-        # # Extract artists data (as there may be multiple artists per song), and merge with the track data
-        # artists_data = pd.concat({i: pd.json_normalize(x) for i, x in normalized_df.pop('artists').items()}) \
-        #     .reset_index(level=1, drop=True)
-        #
-        # updated_df = normalized_df.join(artists_data, rsuffix='_artist')
-        #
-        # # Select useful columns
-        # useful_cols = ['disc_number', 'duration_ms', 'id', 'name', 'popularity', 'track_number', 'type',
-        #                'album.album_type',
-        #                'album.name', 'album.release_date', 'album.release_date_precision', 'album.total_tracks',
-        #                'album.type',
-        #                'id_artist']
-        #
-        # tidied_data = updated_df[useful_cols]
-        #
-        # return tidied_data
-
-
-#features code
-# x = ",".join(track_ids['id'])
-#
-# r = self.oauth_session.get('https://api.spotify.com/v1/audio-features?ids=' + x)
-#
-# # Writing to sample.json
-# with open(output_file, "w") as outfile:
-#     json.dump(r.json(), outfile)
-#
-# print("Output written successfully")
-#
-# features = r.json()
-# features_df = pd.DataFrame(features['audio_features'])
-#
-# return features_df
+        full_data = tracks.merge(track_feats, on=['id', 'duration_ms'])
+        full_data_file = 'final_results' + today + '.csv'
+        full_data.to_csv('data_raw/' + full_data_file)
